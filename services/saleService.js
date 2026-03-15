@@ -170,7 +170,7 @@ async function processReturn(body) {
   logger.info('SaleService.processReturn() invoked');
   const { saleId, items } = body;
   if (!items || !items.length) throw new Error('Return must specify items');
-  const sale = await Sale.findByPk(saleId, { include: [{ model: SaleItem, as: 'items', include: [Product] }] });
+  const sale = await Sale.findByPk(saleId, { include: [{ model: SaleItem, as: 'items', include: [{ model: Product, as: 'product' }] }] });
   if (!sale) throw new Error('Sale not found');
   for (const it of items) {
     const saleItem = sale.items.find(i => i.id === it.saleItemId);
@@ -186,6 +186,14 @@ async function processReturn(body) {
       userId: body.userId,
       note: `Return from sale ${sale.invoiceNo}`
     });
+  }
+  // If every item is fully returned, mark sale as Refunded
+  const updatedSale = await Sale.findByPk(saleId, { include: [{ model: SaleItem, as: 'items' }] });
+  const allReturned = updatedSale.items.every(
+    (i) => (Number(i.returnedQty) || 0) >= (Number(i.quantity) || 0)
+  );
+  if (allReturned && updatedSale.items.length > 0) {
+    await updatedSale.update({ status: 'Refunded' });
   }
   return getById(saleId);
 }
